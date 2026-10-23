@@ -18,12 +18,14 @@ export default function ScansPage() {
       <Card className="mb-6 flex items-start gap-3 border-dashed p-4">
         <PlugZap className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
         <div className="text-sm">
-          <p className="font-medium text-fg">Scanning backend not connected</p>
+          <p className="font-medium text-fg">This is run history (demo)</p>
           <p className="mt-1 text-fg-muted">
-            This build shows demonstration runs. A real deployment would launch a
-            scan by invoking an authorized engine (for example the ghostmap or
-            shellhound CLIs) and stream genuine job state here. No scan is started
-            from this screen, and no progress is simulated.
+            These are demonstration runs. Live scanning happens on the{" "}
+            <a href="/scan" className="text-accent hover:underline">
+              Scan a URL
+            </a>{" "}
+            page — results there are real, not stored here yet. Deeper engines
+            (ghostmap, shellhound) run from the command line.
           </p>
         </div>
       </Card>

@@ -19,14 +19,22 @@ that sits on top of command-line scanning engines like
 ## What's implemented
 
 - **Public landing** (`/`) — what it does, how it fits together, scope.
+- **Live passive scan** (`/scan` + `POST /api/scan`) — enter a URL you are
+  authorized to test and the server performs a passive audit (GET only): host
+  info (IP, reverse DNS, server, tech), missing security headers, bare cookies,
+  version disclosure, exposed sensitive files (signature-matched, secrets
+  masked), directory listing, login/upload/webshell detection, and HTTP→HTTPS
+  check. An **SSRF guard** rejects private/internal/metadata addresses, and the
+  request is refused without an explicit authorization confirmation.
 - **Workspace** — a distinct app shell with responsive navigation (persistent
   sidebar on desktop, drawer on mobile):
-  - `/dashboard` — posture overview and what needs attention
+  - `/dashboard` — posture overview, remediation progress, severity chart
   - `/findings` — searchable, filterable table (cards on mobile) with a detail
-    panel showing evidence, risk, and remediation
-  - `/scans` — run history, honest about the missing scan backend
+    panel, status you can set (persisted), and Markdown export
+  - `/scans` — demo run history
   - `/learn` — plain explanations of each weakness class
   - `/settings` — preferences persisted to `localStorage` (no server)
+- **Command palette** (⌘K / Ctrl+K) — jump to any page or finding.
 
 ## Design system
 
@@ -49,9 +57,13 @@ npm test        # unit + component tests (Vitest)
 
 ## Verification run
 
-- **Unit + component tests** — 27 tests across 6 files (Vitest + Testing
+- **Unit + component tests** — 33 tests across 7 files (Vitest + Testing
   Library): formatting, report generation, demo-data integrity, the status
-  store, UI primitives, and the command palette (open, filter, navigate).
+  store, UI primitives, the command palette (open, filter, navigate), and the
+  scan engine's SSRF classification, secret masking, and same-host parsing.
+- **Scan API** — authorization guard (403) and SSRF guard (private/loopback/
+  metadata → 400) verified against the running endpoint. The live fetch runs on
+  the deployment; it is not exercised in a sandbox without outbound DNS.
 - **Lint & types** — ESLint and `tsc --noEmit` both clean.
 - **Build** — production build prerenders all seven routes as static.
 - **Layout** — checked with a headless browser across widths 320 / 360 / 768 /

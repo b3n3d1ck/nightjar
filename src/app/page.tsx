@@ -52,8 +52,8 @@ export default function LandingPage() {
                 </a>
               </div>
               <p className="mt-4 text-xs text-fg-subtle">
-                The workspace runs on clearly-labelled demonstration data. No live
-                scanning backend is connected in this build.
+                Includes a live, passive URL audit for sites you control. The
+                dashboards use clearly-labelled demonstration data.
               </p>
             </div>
 
@@ -93,10 +93,9 @@ export default function LandingPage() {
             How it fits together
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-fg-muted">
-            The scanning is done by command-line engines you run against systems
-            you control. Their output is what a workspace like this reviews. This
-            build ships the review layer with sample data; wiring a live engine is
-            the next step.
+            NIGHTJAR runs its own live passive audit from the Scan page, and it
+            pairs with deeper command-line engines you run against systems you
+            control. Their output is what the workspace reviews.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <FlowStep

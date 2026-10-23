@@ -33,9 +33,9 @@ export default function DashboardPage() {
         title="Overview"
         description="Current posture across the sample targets, with the findings that need attention first."
         action={
-          <Link href="/scans" className={buttonClass("primary", "sm")}>
+          <Link href="/scan" className={buttonClass("primary", "sm")}>
             <Radar className="size-4" aria-hidden />
-            Scans
+            Scan a URL
           </Link>
         }
       />
