@@ -1,6 +1,7 @@
 import { lookup, reverse } from "node:dns/promises";
+import { createHash } from "node:crypto";
 import type { Severity } from "@/lib/types";
-import type { ScanFinding, ScanPath, ScanResult } from "./types";
+import type { Confidence, ScanFinding, ScanPath, ScanResult } from "./types";
 
 /* ============================================================================
    Passive scan engine (server-side). GET only. No brute-force wordlists beyond
@@ -9,12 +10,19 @@ import type { ScanFinding, ScanPath, ScanResult } from "./types";
    public tool like securityheaders.com performs.
    ========================================================================== */
 
-const UA = "NIGHTJAR/1.0 (+passive security audit)";
+export const SCANNER_VERSION = "1.1.0";
+const UA = `NIGHTJAR/${SCANNER_VERSION} (+passive security audit)`;
 const PER_REQUEST_TIMEOUT = 6000;
 const MAX_REQUESTS = 24;
+const MAX_REDIRECTS = 4;
 const MAX_BODY = 500_000;
 
 export class ScanRejected extends Error {}
+
+export function sameScope(baseHostname: string, hostname: string): boolean {
+  const norm = (h: string) => h.toLowerCase().replace(/^www\./, "");
+  return norm(baseHostname) === norm(hostname);
+}
 
 // ---- SSRF guard -----------------------------------------------------------
 
@@ -66,18 +74,21 @@ interface Resp {
   headers: Headers;
   body: string;
   ok: boolean;
+  location: string | null;
+  /** set when a redirect left the authorized scope and was NOT followed */
+  offScope?: string;
 }
 
-async function get(
-  url: string,
-  opts: { redirect?: RequestRedirect } = {},
-): Promise<Resp | null> {
+// A single request. Redirects are NEVER followed automatically — the caller
+// decides, after re-validating the destination. This is what closes the
+// redirect-based SSRF / scope-escape hole.
+async function get(url: string): Promise<Resp | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), PER_REQUEST_TIMEOUT);
   try {
     const res = await fetch(url, {
       method: "GET",
-      redirect: opts.redirect ?? "follow",
+      redirect: "manual",
       signal: ctrl.signal,
       headers: { "User-Agent": UA, Accept: "*/*" },
     });
@@ -97,12 +108,52 @@ async function get(
         }
       }
     }
-    return { status: res.status, headers: res.headers, body, ok: res.ok };
+    return {
+      status: res.status,
+      headers: res.headers,
+      body,
+      ok: res.ok,
+      location: res.headers.get("location"),
+    };
   } catch {
     return null;
   } finally {
     clearTimeout(t);
   }
+}
+
+// Follow redirects manually, re-validating every hop: the destination must
+// resolve to a public address (SSRF guard) AND stay within the authorized
+// scope. A redirect into private space aborts the scan; an off-scope redirect
+// is reported and not followed.
+async function getFollow(
+  startUrl: string,
+  baseHostname: string,
+  bump: () => boolean,
+): Promise<Resp | null> {
+  let url = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!bump()) return null;
+    const r = await get(url);
+    if (!r) return null;
+    const isRedirect = r.status >= 300 && r.status < 400 && r.location;
+    if (!isRedirect) return r;
+
+    let next: URL;
+    try {
+      next = new URL(r.location!, url);
+    } catch {
+      return r;
+    }
+    if (next.protocol !== "http:" && next.protocol !== "https:") return r;
+    if (!sameScope(baseHostname, next.hostname)) {
+      r.offScope = next.href;
+      return r; // stop at the redirect; do not leave scope
+    }
+    await assertPublicHost(next.host); // throws ScanRejected on private/internal
+    url = next.href;
+  }
+  return null; // too many redirects
 }
 
 // ---- detectors ------------------------------------------------------------
@@ -117,6 +168,34 @@ const reShell =
   /c99shell|r57shell|b374k|filesman|wso\s*\d|indoxploit|alfa team|p0wny|\$auth_pass|uname -a</i;
 const reSecret =
   /(pass(?:word|wd)?|secret|api[_-]?key|token|auth_pass)\s*[=:]\s*['"]?[^'"\s,;)]{3,}/gi;
+
+const REFERENCES: Record<string, string[]> = {
+  "Security headers": [
+    "https://owasp.org/www-project-secure-headers/",
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers",
+  ],
+  "Session management": [
+    "https://owasp.org/www-community/controls/SecureCookieAttribute",
+  ],
+  "Information disclosure": [
+    "https://owasp.org/www-project-web-security-testing-guide/",
+  ],
+  "Sensitive data exposure": [
+    "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
+  ],
+  "Transport security": [
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security",
+  ],
+  "Misconfiguration": [
+    "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/",
+  ],
+  "Malware / backdoor": [
+    "https://owasp.org/www-community/attacks/Web_Shell",
+  ],
+  "Upload handling": [
+    "https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload",
+  ],
+};
 
 const SEC_HEADERS: { key: string; label: string; sev: Severity; fix: string }[] = [
   { key: "content-security-policy", label: "Content-Security-Policy", sev: "medium", fix: "Add a CSP, starting from default-src 'self'." },
@@ -209,20 +288,44 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   let requests = 0;
   const findings: ScanFinding[] = [];
   const paths: ScanPath[] = [];
+  const notes: string[] = [];
   const origin = `${base.protocol}//${base.host}`;
-  const fetchPath = async (p: string, redirect?: RequestRedirect) => {
-    if (requests >= MAX_REQUESTS) return null;
-    requests++;
-    return get(origin + p, { redirect });
-  };
 
-  const root = await fetchPath(base.pathname || "/");
+  const bump = () => {
+    if (requests >= MAX_REQUESTS) return false;
+    requests++;
+    return true;
+  };
+  // follows redirects, re-validating each hop (SSRF + scope)
+  const fetchFollow = (p: string) => getFollow(origin + p, base.hostname, bump);
+  // single request, no redirect following (for sensitive-file probes etc.)
+  const fetchOnce = (p: string) => (bump() ? get(origin + p) : Promise.resolve(null));
+
+  const root = await fetchFollow(base.pathname || "/");
   let fp: { server: string | null; tech: string[] } = { server: null, tech: [] };
   if (!root) throw new ScanRejected("The target did not respond.");
+  if (root.offScope) notes.push(`Root redirected off-scope to ${root.offScope}; not followed.`);
   fp = fingerprint(root);
 
-  const add = (f: Omit<ScanFinding, "id">) =>
-    findings.push({ ...f, id: `LV-${findings.length + 1}` });
+  const seenIds = new Set<string>();
+  const add = (
+    f: Omit<ScanFinding, "id" | "scannerVersion" | "detectedAt" | "references" | "confidence"> & {
+      confidence?: Confidence;
+      references?: string[];
+    },
+  ) => {
+    const id = "NJ-" + createHash("sha1").update(`${f.category}|${f.title}|${f.evidence.location}`).digest("hex").slice(0, 10);
+    if (seenIds.has(id)) return; // duplicate detection
+    seenIds.add(id);
+    findings.push({
+      ...f,
+      id,
+      confidence: f.confidence ?? "confirmed",
+      references: f.references ?? REFERENCES[f.category] ?? [],
+      scannerVersion: SCANNER_VERSION,
+      detectedAt: new Date().toISOString(),
+    });
+  };
 
   // --- header audit ---
   for (const h of SEC_HEADERS) {
@@ -276,8 +379,9 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
       add({
         title: "Page content matches a known webshell",
         severity: "critical",
+        confidence: "potential",
         category: "Malware / backdoor",
-        observation: "A served page contains markers of a known webshell interface.",
+        observation: "A served page contains markers of a known webshell interface. This is a signature match and must be verified by hand.",
         risk: "If genuine, an attacker already has code execution on the host. Treat as incident response.",
         recommendation: "Do not open it in a browser. Isolate the file, review access logs, begin IR.",
         evidence: { location: loc, snippet: mask(body.slice(0, 300)) },
@@ -286,8 +390,9 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
       add({
         title: "File upload form observed",
         severity: "high",
+        confidence: "potential",
         category: "Upload handling",
-        observation: "A multipart file upload form is present on this page.",
+        observation: "A multipart file upload form is present on this page. Whether it is exploitable depends on server-side validation, which a passive scan cannot see.",
         risk: "If the server trusts the client-supplied type, this is a common route to a planted webshell.",
         recommendation: "Validate uploads by content, store outside the web root, disable execution there.",
         evidence: { location: loc },
@@ -296,6 +401,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
       add({
         title: "Login form",
         severity: "info",
+        confidence: "informational",
         category: "Surface",
         observation: "This page carries a login form.",
         risk: "Authentication surface worth noting for rate-limiting and credential-stuffing defences.",
@@ -323,7 +429,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     const p = sameHostPath(base, m[1]);
     if (p) seeds.add(p);
   }
-  const robots = await fetchPath("/robots.txt");
+  const robots = await fetchFollow("/robots.txt");
   if (robots?.status === 200) {
     for (const line of robots.body.split("\n")) {
       const dm = line.match(/^\s*(?:dis)?allow\s*:\s*(\S+)/i);
@@ -333,7 +439,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
       }
     }
   }
-  const sitemap = await fetchPath("/sitemap.xml");
+  const sitemap = await fetchFollow("/sitemap.xml");
   if (sitemap?.status === 200) {
     reLoc.lastIndex = 0;
     while ((m = reLoc.exec(sitemap.body)) && seeds.size < 16) {
@@ -345,7 +451,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   const seedList = [...seeds].filter((p) => p !== (base.pathname || "/")).slice(0, 8);
   await Promise.all(
     seedList.map(async (p) => {
-      const r = await fetchPath(p);
+      const r = await fetchFollow(p);
       if (r && r.status === 200) {
         const ct = r.headers.get("content-type") ?? "";
         paths.push({ path: p, status: 200, title: ct.includes("html") ? title(r.body) : undefined });
@@ -357,7 +463,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   // --- sensitive files (short fixed list, signature-matched) ---
   await Promise.all(
     SENSITIVE.map(async (sf) => {
-      const r = await fetchPath(sf.path, "manual");
+      const r = await fetchOnce(sf.path);
       if (r && r.status === 200 && sf.re.test(r.body)) {
         add({
           title: sf.title,
@@ -379,11 +485,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
 
   // --- HTTP -> HTTPS redirect ---
   if (base.protocol === "https:") {
-    const httpRes = await (async () => {
-      if (requests >= MAX_REQUESTS) return null;
-      requests++;
-      return get(`http://${base.host}/`, { redirect: "manual" });
-    })();
+    const httpRes = bump() ? await get(`http://${base.host}/`) : null;
     if (httpRes) {
       const loc = (httpRes.headers.get("location") ?? "").toLowerCase();
       const redirected =
@@ -406,6 +508,10 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   findings.sort((a, b) => order.indexOf(a.severity) - order.indexOf(b.severity));
   paths.sort((a, b) => a.path.localeCompare(b.path));
 
+  if (requests >= MAX_REQUESTS) {
+    notes.push(`Request budget (${MAX_REQUESTS}) reached; some checks may be partial.`);
+  }
+
   return {
     target: base.href,
     ips,
@@ -417,6 +523,8 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     requests,
     durationMs: Date.now() - started,
     scannedAt: new Date().toISOString(),
+    scannerVersion: SCANNER_VERSION,
+    notes,
     live: true,
   };
 }

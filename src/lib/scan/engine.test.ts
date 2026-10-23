@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ipIsPrivate, mask, sameHostPath } from "./engine";
+import { ipIsPrivate, mask, sameHostPath, sameScope } from "./engine";
 
 describe("ipIsPrivate (SSRF guard classification)", () => {
   it("treats private, loopback, and link-local ranges as private", () => {
@@ -49,5 +49,18 @@ describe("sameHostPath", () => {
     expect(sameHostPath(base, "https://evil.example/x")).toBeNull();
     expect(sameHostPath(base, "mailto:a@b.com")).toBeNull();
     expect(sameHostPath(base, "javascript:alert(1)")).toBeNull();
+  });
+});
+
+describe("sameScope (redirect scope enforcement)", () => {
+  it("keeps the apex/www pair in scope", () => {
+    expect(sameScope("site.example", "site.example")).toBe(true);
+    expect(sameScope("site.example", "www.site.example")).toBe(true);
+    expect(sameScope("www.site.example", "site.example")).toBe(true);
+  });
+  it("rejects a different host (redirect scope escape)", () => {
+    expect(sameScope("site.example", "evil.example")).toBe(false);
+    expect(sameScope("site.example", "site.example.evil.com")).toBe(false);
+    expect(sameScope("site.example", "api.site.example")).toBe(false);
   });
 });

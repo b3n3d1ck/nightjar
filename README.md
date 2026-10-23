@@ -24,8 +24,20 @@ that sits on top of command-line scanning engines like
   info (IP, reverse DNS, server, tech), missing security headers, bare cookies,
   version disclosure, exposed sensitive files (signature-matched, secrets
   masked), directory listing, login/upload/webshell detection, and HTTP→HTTPS
-  check. An **SSRF guard** rejects private/internal/metadata addresses, and the
-  request is refused without an explicit authorization confirmation.
+  check. Findings carry a stable ID, **confidence** (confirmed / potential /
+  informational), standards references, and a scanner version; the run records
+  notes about skipped or partial checks. Export as **Markdown or JSON**.
+  - **Server-side scope & SSRF defence:** the request is refused without an
+    explicit authorization confirmation (403); the target host and every
+    resolved address are checked against private/loopback/link-local/metadata
+    ranges (IPv4 + IPv4-mapped IPv6); **redirects are followed manually and
+    re-validated per hop**, aborting on private destinations and refusing to
+    leave the authorized scope; a best-effort per-IP rate limit applies. See
+    `SECURITY.md`.
+- **Offline URL / phishing analysis** (`/analyze`) — pure, no-network inspection
+  of a link for userinfo obfuscation (`user@host`), punycode/IDN homoglyphs,
+  raw-IP hosts, brand terms used away from the real domain, risky TLDs, and deep
+  subdomain nesting. Indicators, not verdicts.
 - **Workspace** — a distinct app shell with responsive navigation (persistent
   sidebar on desktop, drawer on mobile):
   - `/dashboard` — posture overview, remediation progress, severity chart
@@ -57,13 +69,29 @@ npm test        # unit + component tests (Vitest)
 
 ## Verification run
 
-- **Unit + component tests** — 33 tests across 7 files (Vitest + Testing
+- **Unit + component tests** — 43 tests across 8 files (Vitest + Testing
   Library): formatting, report generation, demo-data integrity, the status
-  store, UI primitives, the command palette (open, filter, navigate), and the
-  scan engine's SSRF classification, secret masking, and same-host parsing.
-- **Scan API** — authorization guard (403) and SSRF guard (private/loopback/
-  metadata → 400) verified against the running endpoint. The live fetch runs on
-  the deployment; it is not exercised in a sandbox without outbound DNS.
+  store, UI primitives, the command palette, the scan engine's SSRF
+  classification / secret masking / same-host / **redirect-scope** logic, and
+  the URL/phishing analyzer.
+- **Scan API** — authorization guard (403), SSRF guard (private/loopback/
+  metadata → 400), and rate limit (429) verified against the running endpoint.
+  The live fetch runs on the deployment; it is not exercised in a sandbox
+  without outbound DNS. End-to-end redirect-follow behaviour needs a network
+  fixture (noted in `docs/AUDIT.md`); its building blocks are unit-tested.
+- **CI** — `.github/workflows/ci.yml` runs lint, type-check, tests, and build on
+  every push and PR.
+
+## Architecture & limitations
+
+NIGHTJAR deploys to Vercel as a single Next.js app; the scanner runs in a
+serverless route handler (Node runtime). This keeps the stack small but bounds
+what the scanner can do: no long-running crawls, background workers, or
+filesystem inspection of a remote host (the `ghostmap`/`shellhound` CLIs cover
+the filesystem case). Workspace state (finding status, settings) is stored
+per-browser in `localStorage` and the dashboard/history use clearly-labelled
+demo data — there is no shared multi-user database yet. See `docs/AUDIT.md` for
+the full audit and the roadmap for durable persistence and authentication.
 - **Lint & types** — ESLint and `tsc --noEmit` both clean.
 - **Build** — production build prerenders all seven routes as static.
 - **Layout** — checked with a headless browser across widths 320 / 360 / 768 /

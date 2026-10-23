@@ -152,17 +152,20 @@ function Results({ result }: { result: ScanResult }) {
     n: result.findings.filter((f) => f.severity === s).length,
   })).filter((c) => c.n > 0);
 
-  function exportReport() {
+  function exportMarkdown() {
     const lines = [
       `# NIGHTJAR live scan — ${result.target}`,
       ``,
-      `Scanned ${result.scannedAt} · ${result.requests} requests · ${result.findings.length} findings`,
+      `Scanned ${result.scannedAt} · scanner v${result.scannerVersion} · ${result.requests} requests · ${result.findings.length} findings`,
       `IP: ${result.ips.join(", ")}${result.server ? ` · Server: ${result.server}` : ""}`,
+      ...(result.notes.length ? [``, `> Notes: ${result.notes.join(" ")}`] : []),
       ``,
       ...result.findings.flatMap((f) => [
         `## [${f.severity.toUpperCase()}] ${f.title}`,
         ``,
+        `- ID: ${f.id}`,
         `- Category: ${f.category}`,
+        `- Confidence: ${f.confidence}`,
         `- Location: ${f.evidence.location}`,
         ``,
         `**Observation.** ${f.observation}`,
@@ -170,6 +173,7 @@ function Results({ result }: { result: ScanResult }) {
         `**Risk.** ${f.risk}`,
         ``,
         `**Recommendation.** ${f.recommendation}`,
+        ...(f.references.length ? [``, `References: ${f.references.join(" , ")}`] : []),
         ``,
         `---`,
       ]),
@@ -177,6 +181,14 @@ function Results({ result }: { result: ScanResult }) {
     downloadText(
       `nightjar-scan-${new Date().toISOString().slice(0, 10)}.md`,
       lines.join("\n"),
+    );
+  }
+
+  function exportJSON() {
+    downloadText(
+      `nightjar-scan-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(result, null, 2),
+      "application/json",
     );
   }
 
@@ -215,16 +227,34 @@ function Results({ result }: { result: ScanResult }) {
             </span>
           ))
         )}
-        <button
-          type="button"
-          onClick={exportReport}
-          disabled={result.findings.length === 0}
-          className={buttonClass("secondary", "sm", "ml-auto")}
-        >
-          <Download className="size-3.5" aria-hidden />
-          Export
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={exportMarkdown}
+            disabled={result.findings.length === 0}
+            className={buttonClass("secondary", "sm")}
+          >
+            <Download className="size-3.5" aria-hidden />
+            Markdown
+          </button>
+          <button
+            type="button"
+            onClick={exportJSON}
+            disabled={result.findings.length === 0}
+            className={buttonClass("secondary", "sm")}
+          >
+            <Download className="size-3.5" aria-hidden />
+            JSON
+          </button>
+        </div>
       </div>
+
+      {result.notes.length > 0 && (
+        <Card className="p-3 text-xs text-fg-muted">
+          <span className="font-medium text-fg">Run notes: </span>
+          {result.notes.join(" ")}
+        </Card>
+      )}
 
       {/* findings */}
       {result.findings.length > 0 && (
@@ -280,7 +310,9 @@ function FindingRow({ f }: { f: ScanFinding }) {
         <SeverityBadge severity={f.severity} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-fg">{f.title}</span>
-          <span className="block truncate text-xs text-fg-subtle">{f.category}</span>
+          <span className="block truncate text-xs text-fg-subtle">
+            {f.category} · {f.confidence}
+          </span>
         </span>
         <ChevronDown
           className={cn("size-4 shrink-0 transition-transform group-open:rotate-180", m.text)}
@@ -291,6 +323,30 @@ function FindingRow({ f }: { f: ScanFinding }) {
         <Field label="Observation" body={f.observation} />
         <Field label="Risk" body={f.risk} />
         <Field label="Recommendation" body={f.recommendation} />
+        {f.references.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+              References
+            </h4>
+            <ul className="mt-0.5 space-y-0.5">
+              {f.references.map((r) => (
+                <li key={r}>
+                  <a
+                    href={r}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all text-xs text-accent hover:underline"
+                  >
+                    {r}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="tnum text-[11px] text-fg-subtle">
+          {f.id} · confidence: {f.confidence} · scanner v{f.scannerVersion}
+        </p>
         <div>
           <div className="mb-1 flex items-center justify-between">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
