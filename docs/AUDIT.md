@@ -2,6 +2,29 @@
 
 A working document. Findings are ordered by priority; each notes the fix status.
 
+## Sprint A — persistent assessment management
+
+- **Implemented:** a PostgreSQL persistence layer — versioned schema +
+  migration runner (`src/lib/db/migrations.ts`, `migrate.ts`), a connection pool
+  gated on `DATABASE_URL` (`pool.ts`), a typed repository with parameterized SQL,
+  transactions, idempotent finding upserts, pagination, and append-only audit
+  events (`repository.ts`), and a REST API (`/api/projects`, `/api/assessments`,
+  `/api/findings`, …) that reuses the existing guarded scanner. Full data model
+  and commands in `docs/DATABASE.md`.
+- **Tested with pg-mem** (12 cases): migrations idempotency, CRUD, unique
+  constraints, status transitions + audit, idempotent finding persistence,
+  filtering/pagination, finding-status updates, deletion with audit survival,
+  and transaction control-flow (BEGIN→ROLLBACK issued on error).
+- **pg-mem limitations found and handled honestly:** pg-mem's pg adapter does
+  not emulate `BEGIN/ROLLBACK` data semantics and does not fully enforce FKs, and
+  it trips on re-parsing `CREATE TABLE IF NOT EXISTS` constraints. The migration
+  runner was adjusted (probe-then-create), and transaction-rollback + FK/cascade
+  are verified against **real Postgres** in `postgres.int.test.ts` (skipped
+  unless `DATABASE_TEST_URL` is set — reported as skipped, never faked).
+- **Not done (needs infra/approval):** authentication + multi-user authorization
+  (the API is single-workspace/unauthenticated), UI wiring to persistence, and
+  production verification against a real provisioned database (none was supplied).
+
 ## Round 3 (address policy & docs)
 
 - **Weak IP classification.** `ipIsPrivate` used string prefixes and missed many

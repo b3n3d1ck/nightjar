@@ -101,8 +101,10 @@ npm test        # unit + component tests (Vitest)
 | URL / phishing analysis (`/analyze`) | **Real**, offline, no network. |
 | Finding status + remediation progress, settings | **Real but per-browser** (`localStorage`) — not shared or durable. |
 | Dashboard metrics, scan **History** (`/scans`) | **Demo data**, clearly labelled; not real assessment records. |
-| Multi-user assessments, projects, durable storage, auth | **Not implemented** — needs a database (see below). |
-| Ghostmap / Shellhound import | **Not implemented** — needs a worker/import adapter (see below). |
+| Assessment management (projects/targets/scopes/assessments/findings/audit) | **Implemented** — Postgres schema + migrations + typed repository + REST API, tested with pg-mem; gated on `DATABASE_URL`. See `docs/DATABASE.md`. |
+| Authentication / multi-user isolation | **Not implemented** — the persistence API is unauthenticated and single-workspace, not production-ready for multiple users. |
+| Persistence UI (projects/assessments screens) | **Not yet** — domain, repository and API are done; UI wiring is the next step. |
+| Ghostmap / Shellhound import | **Not implemented** — needs a worker/import adapter. |
 
 Real scan results and demo data are never mixed: live results appear only on
 `/scan`, and every demo surface carries a `Demo` label.

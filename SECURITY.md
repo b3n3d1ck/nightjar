@@ -45,6 +45,17 @@ platform `fetch` cannot be pinned to a specific resolved IP. For assessments of
 internal networks, run the engine in a controlled environment with an explicit
 allow-policy rather than exposing it publicly.
 
+## Persistence API — authentication status
+
+The assessment-management API (`/api/projects`, `/api/assessments`, …) is
+**unauthenticated and single-workspace**. Any caller who can reach it can
+create, read, and modify records. It is a developer/self-hosted API, **not**
+multi-tenant and **not** safe to expose publicly for multiple users until
+authentication and per-workspace authorization are added. It is gated on
+`DATABASE_URL` and returns 503 when no database is configured — it never falls
+back to demo data. Errors are mapped to generic responses so connection strings
+and driver internals never reach the client. See `docs/DATABASE.md`.
+
 ## Reporting a vulnerability
 
 If you find a security issue in NIGHTJAR itself, please open a private report via
