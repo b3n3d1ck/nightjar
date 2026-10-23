@@ -1,37 +1,39 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   NIGHTJAR — design tokens (v2, nocturnal)
-   Cool ink foundation, indigo→violet accent reserved for actions / active /
-   brand moments. Severity keeps distinct hues and is always paired with an
-   icon + label, never colour alone. Depth comes from layered surfaces, hairline
-   top-highlights, and restrained shadows — not glassmorphism or big gradients.
+   NIGHTJAR — design tokens (v3, graphite / signal)
+   A near-black graphite foundation with a muted acid-emerald signal accent,
+   reserved for primary action, active state, and the brand mark. The primary
+   button carries that accent as a flat fill with dark ink on top — no brand
+   gradient, no glow. Severity keeps its own warm hues (red/orange/amber/blue),
+   so risk never reads as "the green thing". Depth is layered surfaces, a
+   hairline top-highlight, and restrained shadows.
    ========================================================================== */
 
 :root {
-  /* surfaces */
-  --bg: #0a0b0f;
-  --surface: #101219;
-  --surface-2: #161a24;
-  --surface-3: #1f2432;
-  --border: #242a3a;
-  --border-strong: #363d54;
+  /* surfaces — neutral graphite, a hair warm so it doesn't look printed-blue */
+  --bg: #08090b;
+  --surface: #0e1013;
+  --surface-2: #15181c;
+  --surface-3: #1e2127;
+  --border: #22262c;
+  --border-strong: #363b44;
 
-  /* foreground */
-  --fg: #e9ebf2;
-  --fg-muted: #99a0b6;
-  --fg-subtle: #646b82;
+  /* foreground — restrained off-white */
+  --fg: #e8eaed;
+  --fg-muted: #969ba3;
+  --fg-subtle: #636872;
 
-  /* brand accent — indigo → violet */
-  --accent: #7d78ff;
-  --accent-2: #b78bff;
-  --accent-hover: #918dff;
-  --accent-contrast: #ffffff;
-  --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
+  /* brand accent — muted acid emerald; dark ink sits on the solid fill */
+  --accent: #3ddc97;
+  --accent-2: #86f0c2;
+  --accent-hover: #4fe6a5;
+  --accent-contrast: #04140d;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
   --gradient-brand: linear-gradient(135deg, var(--accent), var(--accent-2));
 
   /* status + severity */
-  --success: #45c08a;
+  --success: #3ddc97;
   --warning: #e0a93f;
   --danger: #f0605a;
   --info: #5aa0e6;
@@ -124,11 +126,13 @@ html {
 
 body {
   background-color: var(--bg);
-  /* static vignette + faint grain — behind all content, no animation */
+  /* static vignette + faint grain — behind all content, no animation. The
+     accent glow is kept low and confined to the top edge so the foundation
+     reads graphite, not green. */
   background-image:
-    radial-gradient(120% 80% at 50% -10%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 60%),
-    radial-gradient(100% 100% at 100% 0%, color-mix(in oklab, var(--accent-2) 6%, transparent), transparent 55%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    radial-gradient(90% 55% at 50% -8%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 62%),
+    radial-gradient(70% 60% at 100% 0%, color-mix(in oklab, var(--info) 4%, transparent), transparent 58%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
   background-attachment: fixed, fixed, fixed;
   color: var(--fg);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
@@ -231,8 +235,28 @@ h1, h2, h3, .font-display {
     color-mix(in oklab, var(--accent) 22%, transparent),
     transparent 70%
   );
-  filter: blur(30px);
+  filter: blur(34px);
+  opacity: 0.85;
   pointer-events: none;
+}
+
+/* mono eyebrow label used above headings */
+.eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+
+/* faint technical grid, confined behind a hero/preview surface */
+.hairline-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 40%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(80% 70% at 50% 40%, #000 30%, transparent 80%);
 }
 
 /* ------------------------------------------------------------- buttons --- */
@@ -273,21 +297,19 @@ h1, h2, h3, .font-display {
   font-size: 0.875rem;
 }
 .btn-primary {
-  color: #fff;
-  background: var(--gradient-brand);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  background: var(--accent);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 6px 20px -10px color-mix(in oklab, var(--accent) 85%, transparent);
+    inset 0 1px 0 color-mix(in oklab, white 30%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .btn-primary:hover {
-  filter: brightness(1.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 12px 28px -10px color-mix(in oklab, var(--accent) 90%, transparent);
+  background: var(--accent-hover);
 }
 .btn-primary:active {
   transform: translateY(1px);
-  filter: brightness(0.97);
+  filter: brightness(0.96);
 }
 .btn-secondary {
   color: var(--fg);

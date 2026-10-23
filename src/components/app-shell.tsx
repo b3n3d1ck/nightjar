@@ -22,11 +22,11 @@ function Brand({ compact = false }: { compact?: boolean }) {
       href="/dashboard"
       className="flex items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
     >
-      <span className="flex size-7 items-center justify-center rounded-md bg-accent-soft text-accent">
+      <span className="flex size-7 items-center justify-center rounded-md border border-[color-mix(in_oklab,var(--accent)_35%,transparent)] bg-accent-soft text-accent">
         <Bird className="size-4" aria-hidden />
       </span>
       {!compact && (
-        <span className="text-sm font-semibold tracking-tight text-fg">
+        <span className="font-display text-sm font-semibold tracking-[0.08em] text-fg">
           NIGHTJAR
         </span>
       )}
@@ -50,7 +50,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             className={cn(
               "group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-[var(--dur-fast)]",
               active
-                ? "bg-surface-2 text-fg"
+                ? "bg-surface-2 font-medium text-fg"
                 : "text-fg-muted hover:bg-surface-2 hover:text-fg",
             )}
           >
