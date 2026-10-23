@@ -1,0 +1,244 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   NIGHTJAR design tokens
+   Dark-first, charcoal foundation. The deep-red accent is reserved for primary
+   actions, active states, and critical risk — it is never the default surface.
+   Severity uses distinct hues AND is always paired with a label/icon, so it
+   never relies on color alone.
+   ========================================================================== */
+
+:root {
+  /* surfaces (layered, low to high elevation) */
+  --bg: #0b0d10;
+  --surface: #111418;
+  --surface-2: #171b21;
+  --surface-3: #1e242c;
+  --border: #252b33;
+  --border-strong: #333b45;
+
+  /* foreground */
+  --fg: #e7e9ec;
+  --fg-muted: #99a2ac;
+  --fg-subtle: #6a7380;
+
+  /* brand accent — muted deep red, used selectively */
+  --accent: #b23b34;
+  --accent-hover: #c74a42;
+  --accent-active: #9c312b;
+  --accent-contrast: #fdf3f2;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+
+  /* status + severity (distinct hues) */
+  --success: #4bae7d;
+  --warning: #d7a53f;
+  --danger: #e0574f;
+  --info: #4f97d6;
+
+  --sev-critical: #e0574f;
+  --sev-high: #e5833a;
+  --sev-medium: #d7a53f;
+  --sev-low: #4f97d6;
+  --sev-info: #8b94a0;
+
+  /* radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.4375rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+
+  /* shadows (restrained) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
+
+  /* focus ring */
+  --ring: color-mix(in oklab, var(--accent) 55%, white 10%);
+
+  /* motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 280ms;
+
+  /* z-index layers */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-drawer: 40;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+}
+
+/* Map tokens to Tailwind's theme so utilities (bg-surface, text-fg-muted, …) work */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-high: var(--sev-high);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-low: var(--sev-low);
+  --color-sev-info: var(--sev-info);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+}
+
+* {
+  min-width: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
+}
+
+/* technical values: tabular + mono */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* focus — visible, consistent, never removed without replacement */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+/* thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+
+/* skip link */
+.skip-link {
+  position: fixed;
+  left: 1rem;
+  top: -4rem;
+  z-index: var(--z-toast);
+  background: var(--surface-3);
+  color: var(--fg);
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  transition: top var(--dur) var(--ease-out);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* shared motion primitives */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.animate-fade { animation: fade-in var(--dur) var(--ease-out) both; }
+.animate-rise { animation: rise-in var(--dur) var(--ease-out) both; }
+.animate-panel { animation: panel-in var(--dur-slow) var(--ease-out) both; }
+.animate-overlay { animation: overlay-in var(--dur-fast) linear both; }
+
+/* skeleton loading */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--surface-3) 70%, transparent),
+    transparent
+  );
+  animation: shimmer 1.4s infinite;
+}
+
+/* Reduced motion: strip nonessential movement, keep opacity cues minimal */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after {
+    animation: none;
+  }
+}
