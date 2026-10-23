@@ -44,15 +44,20 @@ npm install
 npm run dev     # http://localhost:3000
 npm run build   # production build (also type-checks)
 npm run lint
+npm test        # unit + component tests (Vitest)
 ```
 
 ## Verification run
 
-Checked with a headless browser across widths 320 / 360 / 768 / 1280 / 1920 on
-every route: no horizontal overflow and no console errors (30 checks). Lint and
-type-check pass; the production build prerenders all seven routes as static.
-This was viewport (browser-emulation) testing, not physical-device testing.
-Screenshots of the running app are in `docs/screens/`.
+- **Unit + component tests** — 27 tests across 6 files (Vitest + Testing
+  Library): formatting, report generation, demo-data integrity, the status
+  store, UI primitives, and the command palette (open, filter, navigate).
+- **Lint & types** — ESLint and `tsc --noEmit` both clean.
+- **Build** — production build prerenders all seven routes as static.
+- **Layout** — checked with a headless browser across widths 320 / 360 / 768 /
+  1280 / 1920 on every route: no horizontal overflow, no console errors
+  (30 checks). This was viewport (browser-emulation) testing, not physical-device
+  testing. Screenshots of the running app are in `docs/screens/`.
 
 ## Scope
 
