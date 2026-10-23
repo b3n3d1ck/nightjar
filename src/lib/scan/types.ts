@@ -45,6 +45,12 @@ export interface ScanResult {
   scannerVersion: string;
   /** notes about the run itself: skipped checks, off-scope redirects, etc. */
   notes: string[];
+  /** the scope the scan was run under */
+  scope: {
+    authorizationRef?: string;
+    allowedHosts: string[];
+    categories: string[];
+  };
   live: true;
 }
 

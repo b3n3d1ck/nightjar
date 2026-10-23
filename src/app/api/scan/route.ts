@@ -1,5 +1,28 @@
 import { NextResponse } from "next/server";
-import { scan, ScanRejected } from "@/lib/scan/engine";
+import { scan, ScanRejected, ALL_CATEGORIES, type ScanScope, type CheckCategory } from "@/lib/scan/engine";
+
+function parseScope(input: unknown): ScanScope | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const o = input as Record<string, unknown>;
+  const scope: ScanScope = {};
+  if (typeof o.authorizationRef === "string") scope.authorizationRef = o.authorizationRef.slice(0, 200);
+  if (Array.isArray(o.allowedHosts)) {
+    scope.allowedHosts = o.allowedHosts.filter((h): h is string => typeof h === "string").slice(0, 20).map((h) => h.slice(0, 253));
+  }
+  if (Array.isArray(o.categories)) {
+    scope.categories = o.categories.filter(
+      (c): c is CheckCategory => typeof c === "string" && (ALL_CATEGORIES as string[]).includes(c),
+    );
+  }
+  if (o.window && typeof o.window === "object") {
+    const w = o.window as Record<string, unknown>;
+    scope.window = {
+      start: typeof w.start === "string" ? w.start : undefined,
+      end: typeof w.end === "string" ? w.end : undefined,
+    };
+  }
+  return scope;
+}
 
 export const maxDuration = 30;
 
@@ -56,7 +79,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await scan(url);
+    const result = await scan(url, { scope: parseScope((body as Record<string, unknown>).scope) });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof ScanRejected) {

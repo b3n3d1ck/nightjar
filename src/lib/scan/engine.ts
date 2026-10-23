@@ -10,7 +10,7 @@ import type { Confidence, ScanFinding, ScanPath, ScanResult } from "./types";
    public tool like securityheaders.com performs.
    ========================================================================== */
 
-export const SCANNER_VERSION = "1.1.0";
+export const SCANNER_VERSION = "1.2.0";
 const UA = `NIGHTJAR/${SCANNER_VERSION} (+passive security audit)`;
 const PER_REQUEST_TIMEOUT = 6000;
 const MAX_REQUESTS = 24;
@@ -18,6 +18,48 @@ const MAX_REDIRECTS = 4;
 const MAX_BODY = 500_000;
 
 export class ScanRejected extends Error {}
+
+/**
+ * Injectable I/O so the engine's security behaviour (SSRF, redirects, cookies,
+ * oversized responses) is deterministically testable without touching the
+ * network. Production uses the real DNS resolver and global fetch.
+ */
+export interface ScanDeps {
+  resolve: (host: string) => Promise<string[]>;
+  fetchImpl: typeof fetch;
+  now: () => number;
+}
+
+const defaultDeps: ScanDeps = {
+  resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
+  fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+  now: () => Date.now(),
+};
+
+/** Category keys the scope can enable/disable. */
+export type CheckCategory =
+  | "headers"
+  | "cookies"
+  | "tls"
+  | "exposure"
+  | "content"
+  | "discovery";
+
+export const ALL_CATEGORIES: CheckCategory[] = [
+  "headers", "cookies", "tls", "exposure", "content", "discovery",
+];
+
+/** Server-enforced assessment scope. */
+export interface ScanScope {
+  /** extra in-scope hosts besides the target; redirects may not leave this set */
+  allowedHosts?: string[];
+  /** which check categories to run; omitted/empty = all */
+  categories?: CheckCategory[];
+  /** operator-supplied authorization reference, recorded in the result */
+  authorizationRef?: string;
+  /** assessment window; a scan outside it is refused */
+  window?: { start?: string; end?: string };
+}
 
 export function sameScope(baseHostname: string, hostname: string): boolean {
   const norm = (h: string) => h.toLowerCase().replace(/^www\./, "");
@@ -43,28 +85,54 @@ export function ipIsPrivate(ip: string): boolean {
   return false;
 }
 
-async function assertPublicHost(host: string): Promise<string[]> {
-  const bare = host.replace(/:\d+$/, "").toLowerCase();
+// Normalize obfuscated IPv4 literals (decimal 2130706433, hex 0x7f000001,
+// 0177.0.0.1, etc.) to dotted form so they can't slip past the private check.
+export function numericToIpv4(host: string): string | null {
+  const h = host.replace(/^\[|\]$/g, "").trim().toLowerCase();
+  const toDotted = (n: number) =>
+    n >= 0 && n <= 0xffffffff
+      ? [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".")
+      : null;
+  if (/^0x[0-9a-f]+$/.test(h)) return toDotted(parseInt(h, 16));
+  if (/^\d+$/.test(h)) return toDotted(parseInt(h, 10));
+  // dotted parts that use octal/hex, e.g. 0177.0.0.1 or 0x7f.0.0.1
+  if (/^(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){1,3}$/.test(h)) {
+    const parts = h.split(".").map((p) =>
+      p.startsWith("0x") ? parseInt(p, 16) : p.length > 1 && p.startsWith("0") ? parseInt(p, 8) : parseInt(p, 10),
+    );
+    if (parts.length === 4 && parts.every((p) => p >= 0 && p <= 255)) return parts.join(".");
+  }
+  return null;
+}
+
+async function assertPublicHost(host: string, resolve: ScanDeps["resolve"]): Promise<string[]> {
+  const bare = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
   if (
     bare === "localhost" ||
     bare.endsWith(".localhost") ||
     bare.endsWith(".local") ||
     bare.endsWith(".internal") ||
-    bare === "metadata.google.internal"
+    bare === "metadata.google.internal" ||
+    bare === "0.0.0.0"
   ) {
     throw new ScanRejected("Target resolves to a non-public host.");
   }
-  let addrs: { address: string }[];
+  // reject obfuscated numeric literals that decode to private space
+  const numeric = numericToIpv4(bare);
+  if (numeric && ipIsPrivate(numeric)) {
+    throw new ScanRejected("Target points to an internal/private address.");
+  }
+  let addrs: string[];
   try {
-    addrs = await lookup(bare, { all: true });
+    addrs = await resolve(bare);
   } catch {
     throw new ScanRejected("Could not resolve the host.");
   }
   if (addrs.length === 0) throw new ScanRejected("Could not resolve the host.");
-  if (addrs.some((a) => ipIsPrivate(a.address))) {
+  if (addrs.some((a) => ipIsPrivate(a))) {
     throw new ScanRejected("Target points to an internal/private address.");
   }
-  return addrs.map((a) => a.address);
+  return addrs;
 }
 
 // ---- http -----------------------------------------------------------------
@@ -82,11 +150,11 @@ interface Resp {
 // A single request. Redirects are NEVER followed automatically — the caller
 // decides, after re-validating the destination. This is what closes the
 // redirect-based SSRF / scope-escape hole.
-async function get(url: string): Promise<Resp | null> {
+async function get(url: string, fetchImpl: ScanDeps["fetchImpl"]): Promise<Resp | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), PER_REQUEST_TIMEOUT);
   try {
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       method: "GET",
       redirect: "manual",
       signal: ctrl.signal,
@@ -128,13 +196,14 @@ async function get(url: string): Promise<Resp | null> {
 // is reported and not followed.
 async function getFollow(
   startUrl: string,
-  baseHostname: string,
   bump: () => boolean,
+  deps: ScanDeps,
+  inScope: (hostname: string) => boolean,
 ): Promise<Resp | null> {
   let url = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!bump()) return null;
-    const r = await get(url);
+    const r = await get(url, deps.fetchImpl);
     if (!r) return null;
     const isRedirect = r.status >= 300 && r.status < 400 && r.location;
     if (!isRedirect) return r;
@@ -146,11 +215,11 @@ async function getFollow(
       return r;
     }
     if (next.protocol !== "http:" && next.protocol !== "https:") return r;
-    if (!sameScope(baseHostname, next.hostname)) {
+    if (!inScope(next.hostname)) {
       r.offScope = next.href;
       return r; // stop at the redirect; do not leave scope
     }
-    await assertPublicHost(next.host); // throws ScanRejected on private/internal
+    await assertPublicHost(next.host, deps.resolve); // throws on private/internal
     url = next.href;
   }
   return null; // too many redirects
@@ -244,11 +313,21 @@ function title(body: string): string | undefined {
   return t ? (t.length > 70 ? t.slice(0, 70) + "…" : t) : undefined;
 }
 
+// Individual Set-Cookie headers. `Headers.get("set-cookie")` collapses multiple
+// cookies into one string, which lets one cookie's attributes mask another's —
+// getSetCookie() keeps them separate (Node 18.14+/undici, and the Fetch spec).
+function getSetCookies(h: Headers): string[] {
+  const anyH = h as Headers & { getSetCookie?: () => string[] };
+  if (typeof anyH.getSetCookie === "function") return anyH.getSetCookie();
+  const v = h.get("set-cookie");
+  return v ? [v] : [];
+}
+
 function fingerprint(r: Resp): { server: string | null; tech: string[] } {
   const set = new Set<string>();
   const xp = r.headers.get("x-powered-by");
   if (xp) set.add(xp);
-  const cookies = (r.headers.get("set-cookie") ?? "").toLowerCase();
+  const cookies = getSetCookies(r.headers).join("; ").toLowerCase();
   const cookieMap: Record<string, string> = {
     laravel_session: "Laravel", phpsessid: "PHP", "connect.sid": "Express/Node",
     jsessionid: "Java", csrftoken: "Django", ci_session: "CodeIgniter", wordpress_: "WordPress",
@@ -265,8 +344,23 @@ function fingerprint(r: Resp): { server: string | null; tech: string[] } {
 
 // ---- main -----------------------------------------------------------------
 
-export async function scan(rawUrl: string): Promise<ScanResult> {
-  const started = Date.now();
+export async function scan(
+  rawUrl: string,
+  opts: { scope?: ScanScope; deps?: Partial<ScanDeps> } = {},
+): Promise<ScanResult> {
+  const deps: ScanDeps = { ...defaultDeps, ...opts.deps };
+  const scope = opts.scope ?? {};
+  const started = deps.now();
+
+  // assessment window enforcement
+  const nowMs = deps.now();
+  if (scope.window?.start && nowMs < Date.parse(scope.window.start)) {
+    throw new ScanRejected("The assessment window has not started yet.");
+  }
+  if (scope.window?.end && nowMs > Date.parse(scope.window.end)) {
+    throw new ScanRejected("The assessment window has closed.");
+  }
+
   let base: URL;
   try {
     base = new URL(rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`);
@@ -277,7 +371,7 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     throw new ScanRejected("Only http and https targets are supported.");
   base.hash = "";
 
-  const ips = await assertPublicHost(base.host);
+  const ips = await assertPublicHost(base.host, deps.resolve);
   let reverseDns: string[] = [];
   try {
     reverseDns = await reverse(ips[0]);
@@ -285,11 +379,27 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     /* no PTR */
   }
 
+  // scope: which hosts a redirect may reach, and which categories run
+  const allowed = new Set(
+    (scope.allowedHosts ?? []).map((h) => h.toLowerCase().replace(/^www\./, "")),
+  );
+  const inScope = (hostname: string) =>
+    sameScope(base.hostname, hostname) ||
+    allowed.has(hostname.toLowerCase().replace(/^www\./, ""));
+  const selected = new Set<CheckCategory>(
+    scope.categories && scope.categories.length ? scope.categories : ALL_CATEGORIES,
+  );
+  const runCat = (c: CheckCategory) => selected.has(c);
+
   let requests = 0;
   const findings: ScanFinding[] = [];
   const paths: ScanPath[] = [];
   const notes: string[] = [];
   const origin = `${base.protocol}//${base.host}`;
+
+  const skippedCats = ALL_CATEGORIES.filter((c) => !selected.has(c));
+  if (skippedCats.length) notes.push(`Checks skipped by scope: ${skippedCats.join(", ")}.`);
+  if (scope.authorizationRef) notes.push(`Authorization ref: ${scope.authorizationRef}.`);
 
   const bump = () => {
     if (requests >= MAX_REQUESTS) return false;
@@ -297,9 +407,10 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     return true;
   };
   // follows redirects, re-validating each hop (SSRF + scope)
-  const fetchFollow = (p: string) => getFollow(origin + p, base.hostname, bump);
+  const fetchFollow = (p: string) => getFollow(origin + p, bump, deps, inScope);
   // single request, no redirect following (for sensitive-file probes etc.)
-  const fetchOnce = (p: string) => (bump() ? get(origin + p) : Promise.resolve(null));
+  const fetchOnce = (p: string) =>
+    bump() ? get(origin + p, deps.fetchImpl) : Promise.resolve(null);
 
   const root = await fetchFollow(base.pathname || "/");
   let fp: { server: string | null; tech: string[] } = { server: null, tech: [] };
@@ -328,49 +439,53 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   };
 
   // --- header audit ---
-  for (const h of SEC_HEADERS) {
-    if (!root.headers.get(h.key)) {
+  if (runCat("headers")) {
+    for (const h of SEC_HEADERS) {
+      if (!root.headers.get(h.key)) {
+        add({
+          title: `Missing header: ${h.label}`,
+          severity: h.sev,
+          category: "Security headers",
+          observation: `No ${h.label} header was present on the main response.`,
+          risk: "Response headers are a cheap defensive layer; their absence widens the impact of other flaws.",
+          recommendation: h.fix,
+          evidence: { location: base.href },
+        });
+      }
+    }
+
+    // version disclosure (same family as headers)
+    if (fp.server && /\d/.test(fp.server)) {
       add({
-        title: `Missing header: ${h.label}`,
-        severity: h.sev,
-        category: "Security headers",
-        observation: `No ${h.label} header was present on the main response.`,
-        risk: "Response headers are a cheap defensive layer; their absence widens the impact of other flaws.",
-        recommendation: h.fix,
-        evidence: { location: base.href },
+        title: "Server version disclosed",
+        severity: "low",
+        category: "Information disclosure",
+        observation: `The Server header advertises a specific build.`,
+        risk: "Version disclosure lets an attacker map known vulnerabilities faster.",
+        recommendation: "Suppress the version (server_tokens off / ServerTokens Prod).",
+        evidence: { location: base.href, response: `Server: ${fp.server}` },
       });
     }
   }
 
-  // --- cookies ---
-  const setCookie = root.headers.get("set-cookie");
-  if (setCookie) {
-    const low = setCookie.toLowerCase();
-    const miss = ["secure", "httponly", "samesite"].filter((a) => !low.includes(a));
-    if (miss.length) {
-      add({
-        title: `Cookie missing attributes: ${miss.join(", ")}`,
-        severity: miss.includes("httponly") || miss.includes("secure") ? "medium" : "low",
-        category: "Session management",
-        observation: `Set-Cookie was returned without: ${miss.join(", ")}.`,
-        risk: "A cookie without HttpOnly is reachable from JavaScript; without Secure it can travel over plaintext.",
-        recommendation: "Set Secure; HttpOnly; SameSite=Lax, especially on session cookies.",
-        evidence: { location: base.href, response: `Set-Cookie: ${mask(setCookie)}` },
-      });
+  // --- cookies (each Set-Cookie analyzed independently) ---
+  if (runCat("cookies")) {
+    for (const raw of getSetCookies(root.headers)) {
+      const name = raw.split("=", 1)[0].trim() || "(cookie)";
+      const attrs = raw.toLowerCase();
+      const miss = ["secure", "httponly", "samesite"].filter((a) => !attrs.includes(a));
+      if (miss.length) {
+        add({
+          title: `Cookie "${name}" missing attributes: ${miss.join(", ")}`,
+          severity: miss.includes("httponly") || miss.includes("secure") ? "medium" : "low",
+          category: "Session management",
+          observation: `The Set-Cookie for "${name}" was returned without: ${miss.join(", ")}.`,
+          risk: "A cookie without HttpOnly is reachable from JavaScript; without Secure it can travel over plaintext; without SameSite it is exposed to CSRF.",
+          recommendation: "Set Secure; HttpOnly; SameSite=Lax, especially on session cookies.",
+          evidence: { location: base.href, response: `Set-Cookie: ${mask(raw)}` },
+        });
+      }
     }
-  }
-
-  // --- version disclosure ---
-  if (fp.server && /\d/.test(fp.server)) {
-    add({
-      title: "Server version disclosed",
-      severity: "low",
-      category: "Information disclosure",
-      observation: `The Server header advertises a specific build.`,
-      risk: "Version disclosure lets an attacker map known vulnerabilities faster.",
-      recommendation: "Suppress the version (server_tokens off / ServerTokens Prod).",
-      evidence: { location: base.href, response: `Server: ${fp.server}` },
-    });
   }
 
   // --- content checks on root ---
@@ -419,9 +534,10 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
         evidence: { location: loc },
       });
   };
-  inspect(base.href, root.body);
+  if (runCat("content")) inspect(base.href, root.body);
 
   // --- wordless path discovery (links + robots + sitemap) ---
+  if (runCat("discovery")) {
   const seeds = new Set<string>();
   let m: RegExpExecArray | null;
   reAttr.lastIndex = 0;
@@ -455,12 +571,14 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
       if (r && r.status === 200) {
         const ct = r.headers.get("content-type") ?? "";
         paths.push({ path: p, status: 200, title: ct.includes("html") ? title(r.body) : undefined });
-        if (ct.includes("html")) inspect(origin + p, r.body);
+        if (ct.includes("html") && runCat("content")) inspect(origin + p, r.body);
       }
     }),
   );
+  } // end discovery
 
   // --- sensitive files (short fixed list, signature-matched) ---
+  if (runCat("exposure"))
   await Promise.all(
     SENSITIVE.map(async (sf) => {
       const r = await fetchOnce(sf.path);
@@ -484,8 +602,8 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
   );
 
   // --- HTTP -> HTTPS redirect ---
-  if (base.protocol === "https:") {
-    const httpRes = bump() ? await get(`http://${base.host}/`) : null;
+  if (runCat("tls") && base.protocol === "https:") {
+    const httpRes = bump() ? await get(`http://${base.host}/`, deps.fetchImpl) : null;
     if (httpRes) {
       const loc = (httpRes.headers.get("location") ?? "").toLowerCase();
       const redirected =
@@ -521,10 +639,15 @@ export async function scan(rawUrl: string): Promise<ScanResult> {
     paths,
     findings,
     requests,
-    durationMs: Date.now() - started,
+    durationMs: deps.now() - started,
     scannedAt: new Date().toISOString(),
     scannerVersion: SCANNER_VERSION,
     notes,
+    scope: {
+      authorizationRef: scope.authorizationRef,
+      allowedHosts: scope.allowedHosts ?? [],
+      categories: [...selected],
+    },
     live: true,
   };
 }

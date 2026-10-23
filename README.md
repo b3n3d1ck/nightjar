@@ -27,13 +27,19 @@ that sits on top of command-line scanning engines like
   check. Findings carry a stable ID, **confidence** (confirmed / potential /
   informational), standards references, and a scanner version; the run records
   notes about skipped or partial checks. Export as **Markdown or JSON**.
-  - **Server-side scope & SSRF defence:** the request is refused without an
-    explicit authorization confirmation (403); the target host and every
-    resolved address are checked against private/loopback/link-local/metadata
-    ranges (IPv4 + IPv4-mapped IPv6); **redirects are followed manually and
-    re-validated per hop**, aborting on private destinations and refusing to
-    leave the authorized scope; a best-effort per-IP rate limit applies. See
-    `SECURITY.md`.
+  - **Server-side scope model:** an optional per-scan scope — authorization
+    reference, also-allowed hosts (for redirects), check categories, and an
+    assessment window — is **enforced in the backend**, not just the UI. The
+    request is refused without an explicit authorization confirmation (403) and
+    outside the window.
+  - **SSRF defence:** the target host and every resolved address are checked
+    against private/loopback/link-local/metadata ranges (IPv4, IPv4-mapped
+    IPv6, and **obfuscated numeric literals** like `0x7f000001` / `2130706433`);
+    **redirects are followed manually and re-validated per hop**, aborting on
+    private destinations and refusing to leave scope; best-effort per-IP rate
+    limit. See `SECURITY.md`.
+  - Each `Set-Cookie` header is analyzed **independently**, so one secure
+    cookie cannot mask another's missing attributes.
 - **Offline URL / phishing analysis** (`/analyze`) — pure, no-network inspection
   of a link for userinfo obfuscation (`user@host`), punycode/IDN homoglyphs,
   raw-IP hosts, brand terms used away from the real domain, risky TLDs, and deep
@@ -69,18 +75,22 @@ npm test        # unit + component tests (Vitest)
 
 ## Verification run
 
-- **Unit + component tests** — 43 tests across 8 files (Vitest + Testing
-  Library): formatting, report generation, demo-data integrity, the status
-  store, UI primitives, the command palette, the scan engine's SSRF
-  classification / secret masking / same-host / **redirect-scope** logic, and
-  the URL/phishing analyzer.
-- **Scan API** — authorization guard (403), SSRF guard (private/loopback/
-  metadata → 400), and rate limit (429) verified against the running endpoint.
-  The live fetch runs on the deployment; it is not exercised in a sandbox
-  without outbound DNS. End-to-end redirect-follow behaviour needs a network
-  fixture (noted in `docs/AUDIT.md`); its building blocks are unit-tested.
+- **Unit + component tests** — 52 tests across 9 files (Vitest + Testing
+  Library). The engine is dependency-injected (resolver + fetch), so its
+  security behaviour is tested **deterministically with no network**:
+  - `engine.integration.test.ts` — per-cookie analysis (the collapse bug),
+    redirect-into-private-space abort, off-scope-redirect not followed, private
+    IPv6 rejection, obfuscated-numeric-host rejection, category-scope
+    enforcement, assessment-window enforcement, and secret masking.
+  - `engine.test.ts` — IP classification, same-host/scope parsing, masking.
+  - plus the URL/phishing analyzer, report generation, store, UI, command
+    palette, and formatting.
+- **Scan API** — authorization guard (403), SSRF guard (→ 400), and rate limit
+  (429) verified against the running endpoint. The live outbound fetch runs on
+  the deployment; it is not exercised in this sandbox (no outbound DNS).
 - **CI** — `.github/workflows/ci.yml` runs lint, type-check, tests, and build on
-  every push and PR.
+  every push/PR, **gates** on production-dependency vulnerabilities, and
+  surfaces dev-tool advisories as warnings.
 
 ## Architecture & limitations
 

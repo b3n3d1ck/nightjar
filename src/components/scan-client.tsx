@@ -23,20 +23,46 @@ type State =
   | { phase: "done"; result: ScanResult }
   | { phase: "error"; message: string };
 
+const CATEGORIES: { id: string; label: string }[] = [
+  { id: "headers", label: "Security headers" },
+  { id: "cookies", label: "Cookies" },
+  { id: "tls", label: "Transport / HTTPS" },
+  { id: "exposure", label: "Exposed files" },
+  { id: "content", label: "Page content" },
+  { id: "discovery", label: "Path discovery" },
+];
+
 export function ScanClient() {
   const [url, setUrl] = React.useState("");
   const [authorized, setAuthorized] = React.useState(false);
   const [state, setState] = React.useState<State>({ phase: "idle" });
+  const [authRef, setAuthRef] = React.useState("");
+  const [allowedHosts, setAllowedHosts] = React.useState("");
+  const [cats, setCats] = React.useState<Set<string>>(new Set(CATEGORIES.map((c) => c.id)));
+
+  function toggleCat(id: string) {
+    setCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim() || !authorized) return;
     setState({ phase: "scanning" });
+    const scope: Record<string, unknown> = {};
+    if (authRef.trim()) scope.authorizationRef = authRef.trim();
+    const hosts = allowedHosts.split(/[\s,]+/).map((h) => h.trim()).filter(Boolean);
+    if (hosts.length) scope.allowedHosts = hosts;
+    if (cats.size && cats.size < CATEGORIES.length) scope.categories = [...cats];
     try {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: url.trim(), authorized }),
+        body: JSON.stringify({ url: url.trim(), authorized, scope }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -106,6 +132,70 @@ export function ScanClient() {
               GET requests only; internal and private addresses are rejected.
             </span>
           </label>
+
+          <details className="rounded-md border border-border bg-surface-2/50">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm text-fg-muted focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
+              <ChevronDown className="size-4" aria-hidden />
+              Scope (optional) — enforced server-side
+            </summary>
+            <div className="space-y-3 border-t border-border px-3 py-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="auth-ref" className="mb-1 block text-xs font-medium text-fg">
+                    Authorization reference
+                  </label>
+                  <input
+                    id="auth-ref"
+                    type="text"
+                    value={authRef}
+                    onChange={(e) => setAuthRef(e.target.value)}
+                    placeholder="e.g. PO-2026-42 / engagement ID"
+                    className="h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-fg placeholder:text-fg-subtle focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="allowed-hosts" className="mb-1 block text-xs font-medium text-fg">
+                    Also-allowed hosts (redirect scope)
+                  </label>
+                  <input
+                    id="allowed-hosts"
+                    type="text"
+                    value={allowedHosts}
+                    onChange={(e) => setAllowedHosts(e.target.value)}
+                    placeholder="api.your-site.com cdn.your-site.com"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="tnum h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-fg placeholder:text-fg-subtle focus-visible:border-border-strong focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
+                  />
+                </div>
+              </div>
+              <fieldset>
+                <legend className="mb-1.5 text-xs font-medium text-fg">Checks to run</legend>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIES.map((c) => (
+                    <label
+                      key={c.id}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs",
+                        cats.has(c.id)
+                          ? "border-border-strong bg-surface-3 text-fg"
+                          : "border-border text-fg-muted",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={cats.has(c.id)}
+                        onChange={() => toggleCat(c.id)}
+                        className="size-3.5 accent-[var(--accent)]"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          </details>
         </form>
       </Card>
 
@@ -213,6 +303,18 @@ function Results({ result }: { result: ScanResult }) {
           <Meta label="Server" value={result.server ?? "—"} />
           <Meta label="Technology" value={result.tech.join(", ") || "—"} />
         </dl>
+        {(result.scope.authorizationRef ||
+          result.scope.allowedHosts.length > 0 ||
+          result.scope.categories.length < 6) && (
+          <p className="mt-3 border-t border-border pt-2 text-xs text-fg-subtle">
+            Scope:{" "}
+            {result.scope.authorizationRef ? `auth ${result.scope.authorizationRef} · ` : ""}
+            {result.scope.categories.length} check categories
+            {result.scope.allowedHosts.length
+              ? ` · +${result.scope.allowedHosts.length} allowed host(s)`
+              : ""}
+          </p>
+        )}
       </Card>
 
       {/* summary + export */}

@@ -2,6 +2,26 @@
 
 A working document. Findings are ordered by priority; each notes the fix status.
 
+## Round 2 (scanner v1.2.0)
+
+- **Confirmed bug — `Set-Cookie` collapse.** `Headers.get("set-cookie")` joins
+  all cookies into one string, so one cookie carrying `Secure; HttpOnly` masked
+  another cookie's missing attributes. **Fixed:** cookies are read with
+  `getSetCookie()` and analyzed individually; regression test proves a bare
+  cookie is still flagged when a secure cookie is also present.
+- **Engine was not testable.** Network and DNS were hard-wired, so SSRF/redirect
+  behaviour could not be tested without a live target. **Fixed:** the engine is
+  dependency-injected (`resolve`, `fetchImpl`, `now`); 9 deterministic
+  integration tests now cover the security-critical paths with no network.
+- **Scope enforced only by a checkbox.** **Fixed:** a real `ScanScope`
+  (authorization reference, also-allowed hosts, check categories, assessment
+  window) is enforced server-side — redirects cannot leave the allowed host set,
+  out-of-window scans are refused, and disabled categories are skipped and noted.
+- **Obfuscated numeric SSRF hosts** (`0x7f000001`, `2130706433`, `0177.0.0.1`)
+  are now decoded and rejected before any request.
+- **CI audit honesty.** Replaced `npm audit … || true` with a **gating**
+  production-dependency audit plus a clearly non-blocking dev advisory.
+
 ## Critical
 
 - **SSRF via followed redirects** — `src/lib/scan/engine.ts`. The HTTP helper

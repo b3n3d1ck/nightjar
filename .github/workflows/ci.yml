@@ -30,5 +30,11 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Dependency audit (advisory, non-blocking)
-        run: npm audit --audit-level=high || true
+      # Gates the build: a high/critical vuln in a *production* dependency fails CI.
+      - name: Dependency audit (production — gating)
+        run: npm audit --omit=dev --audit-level=high
+
+      # Visible but non-blocking: dev-tool advisories (e.g. the test runner's
+      # internals) are surfaced as a warning, not a build failure.
+      - name: Dependency audit (dev — advisory)
+        run: npm audit --audit-level=critical || echo "::warning::dev-only dependency advisories present"
