@@ -16,24 +16,16 @@ import { SEVERITY_LABEL, STATUS_LABEL } from "@/lib/types";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md";
 
-const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-md font-medium whitespace-nowrap " +
-  "transition-colors duration-[var(--dur-fast)] disabled:opacity-50 disabled:pointer-events-none " +
-  "focus-visible:outline-2 focus-visible:outline-[var(--ring)] focus-visible:outline-offset-2 select-none";
-
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary:
-    "bg-accent text-accent-contrast hover:bg-accent-hover active:brightness-95",
-  secondary:
-    "bg-surface-2 text-fg border border-border hover:bg-surface-3 hover:border-border-strong",
-  ghost: "text-fg-muted hover:text-fg hover:bg-surface-2",
-  danger:
-    "bg-transparent text-danger border border-[color-mix(in_oklab,var(--danger)_40%,transparent)] hover:bg-[color-mix(in_oklab,var(--danger)_14%,transparent)]",
+  primary: "btn-primary",
+  secondary: "btn-secondary",
+  ghost: "btn-ghost",
+  danger: "btn-danger",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm min-w-8",
-  md: "h-10 px-4 text-sm min-h-10",
+  sm: "btn-sm",
+  md: "btn-md",
 };
 
 export function buttonClass(
@@ -41,7 +33,7 @@ export function buttonClass(
   size: ButtonSize = "md",
   className?: string,
 ) {
-  return cn(buttonBase, buttonVariants[variant], buttonSizes[size], className);
+  return cn("btn", buttonVariants[variant], buttonSizes[size], className);
 }
 
 export interface ButtonProps
@@ -53,11 +45,7 @@ export interface ButtonProps
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   function Button({ variant = "secondary", size = "md", className, ...rest }, ref) {
     return (
-      <button
-        ref={ref}
-        className={cn(buttonBase, buttonVariants[variant], buttonSizes[size], className)}
-        {...rest}
-      />
+      <button ref={ref} className={buttonClass(variant, size, className)} {...rest} />
     );
   },
 );
@@ -66,15 +54,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
 export function Card({
   className,
+  interactive = false,
   children,
   ...rest
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & { interactive?: boolean }) {
   return (
     <div
-      className={cn(
-        "rounded-lg border border-border bg-surface shadow-[var(--shadow-sm)]",
-        className,
-      )}
+      className={cn("nj-card", interactive && "nj-card-interactive", className)}
       {...rest}
     >
       {children}

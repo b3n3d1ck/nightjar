@@ -6,6 +6,11 @@ import { usePathname } from "next/navigation";
 import { Bird, Menu, X, Search, CircleUser } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "@/lib/nav";
+import { CommandPalette, OPEN_PALETTE_EVENT } from "@/components/command-palette";
+
+function openPalette() {
+  window.dispatchEvent(new Event(OPEN_PALETTE_EVENT));
+}
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
@@ -121,13 +126,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <Link
-              href="/findings"
-              className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface-2 px-3 text-sm text-fg-muted transition-colors hover:border-border-strong hover:text-fg"
+            <button
+              type="button"
+              onClick={openPalette}
+              aria-label="Open command palette"
+              className="flex h-9 items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-sm text-fg-muted transition-colors hover:border-border-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-[var(--ring)]"
             >
               <Search className="size-4" aria-hidden />
-              <span className="hidden sm:inline">Search findings</span>
-            </Link>
+              <span className="hidden sm:inline">Search…</span>
+              <kbd className="hidden rounded border border-border bg-surface px-1.5 py-0.5 font-sans text-[10px] text-fg-subtle sm:inline">
+                ⌘K
+              </kbd>
+            </button>
             <button
               type="button"
               aria-label="Account"
@@ -171,6 +181,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+
+      <CommandPalette />
     </div>
   );
 }

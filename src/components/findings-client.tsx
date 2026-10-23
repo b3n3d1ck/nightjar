@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, X, SlidersHorizontal, ListChecks } from "lucide-react";
+import { Search, X, SlidersHorizontal, ListChecks, Download } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   PageHeader,
@@ -12,6 +12,7 @@ import {
   DemoTag,
   EmptyState,
   severityMeta,
+  buttonClass,
 } from "@/components/ui";
 import { CopyButton } from "@/components/copy-button";
 import { Sheet } from "@/components/sheet";
@@ -24,6 +25,10 @@ import {
   type FindingStatus,
 } from "@/lib/types";
 import { formatDate } from "@/lib/format";
+import { useStatusOverrides, setFindingStatus } from "@/lib/store";
+import { buildMarkdown, downloadText } from "@/lib/report";
+
+const STATUS_FLOW: FindingStatus[] = ["open", "reviewing", "remediated", "accepted"];
 
 const STATUSES: FindingStatus[] = ["open", "reviewing", "remediated", "accepted"];
 
@@ -36,11 +41,17 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
   const [status, setStatus] = React.useState<Set<FindingStatus>>(new Set());
   const [selectedId, setSelectedId] = React.useState<string | null>(focus);
 
+  const overrides = useStatusOverrides();
+  const statusOf = React.useCallback(
+    (f: Finding): FindingStatus => overrides[f.id] ?? f.status,
+    [overrides],
+  );
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return findings
       .filter((f) => (sev.size ? sev.has(f.severity) : true))
-      .filter((f) => (status.size ? status.has(f.status) : true))
+      .filter((f) => (status.size ? status.has(statusOf(f)) : true))
       .filter((f) =>
         q
           ? [f.title, f.target, f.id, f.category].some((v) =>
@@ -53,7 +64,12 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
           SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity) ||
           b.lastSeen.localeCompare(a.lastSeen),
       );
-  }, [findings, query, sev, status]);
+  }, [findings, query, sev, status, statusOf]);
+
+  function exportReport() {
+    const md = buildMarkdown(filtered, statusOf);
+    downloadText(`nightjar-findings-${new Date().toISOString().slice(0, 10)}.md`, md);
+  }
 
   const selected = findings.find((f) => f.id === selectedId) ?? null;
   const hasFilters = query || sev.size || status.size;
@@ -112,6 +128,15 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
               Clear
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={exportReport}
+            disabled={filtered.length === 0}
+            className={buttonClass("secondary", "sm")}
+          >
+            <Download className="size-3.5" aria-hidden />
+            Export
+          </button>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -165,7 +190,7 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <SeverityBadge severity={f.severity} />
-                      <StatusBadge status={f.status} />
+                      <StatusBadge status={statusOf(f)} />
                     </div>
                     <p className="mt-2 text-sm font-medium text-fg">{f.title}</p>
                     <p className="tnum mt-0.5 break-all text-xs text-fg-subtle">
@@ -219,7 +244,7 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
                       </td>
                       <td className="px-4 py-3 align-top text-fg-muted">{f.category}</td>
                       <td className="px-4 py-3 align-top">
-                        <StatusBadge status={f.status} />
+                        <StatusBadge status={statusOf(f)} />
                       </td>
                       <td className="tnum px-4 py-3 align-top text-fg-muted">
                         {formatDate(f.lastSeen)}
@@ -249,7 +274,13 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
           ) : null
         }
       >
-        {selected ? <FindingDetail finding={selected} /> : null}
+        {selected ? (
+          <FindingDetail
+            finding={selected}
+            status={statusOf(selected)}
+            onStatus={(s) => setFindingStatus(selected.id, s)}
+          />
+        ) : null}
       </Sheet>
     </>
   );
@@ -284,17 +315,52 @@ function FilterChip({
   );
 }
 
-function FindingDetail({ finding }: { finding: Finding }) {
+function FindingDetail({
+  finding,
+  status,
+  onStatus,
+}: {
+  finding: Finding;
+  status: FindingStatus;
+  onStatus: (s: FindingStatus) => void;
+}) {
   return (
     <div className="space-y-5">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <SeverityBadge severity={finding.severity} />
-          <StatusBadge status={finding.status} />
+          <StatusBadge status={status} />
           <span className="text-xs text-fg-subtle">{finding.category}</span>
         </div>
         <h3 className="mt-2 text-base font-semibold text-fg">{finding.title}</h3>
         <p className="tnum mt-1 break-all text-sm text-fg-muted">{finding.target}</p>
+      </div>
+
+      <div>
+        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+          Set status
+        </h4>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Set status">
+          {STATUS_FLOW.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onStatus(s)}
+              aria-pressed={status === s}
+              className={cn(
+                "h-8 rounded-md border px-2.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[var(--ring)]",
+                status === s
+                  ? "border-accent bg-accent-soft text-fg"
+                  : "border-border text-fg-muted hover:border-border-strong hover:text-fg",
+              )}
+            >
+              {STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs text-fg-subtle">
+          Saved in this browser · demo finding, no server.
+        </p>
       </div>
 
       <Field label="Observation" body={finding.observation} />

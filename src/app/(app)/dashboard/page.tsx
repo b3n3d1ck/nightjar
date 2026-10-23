@@ -9,6 +9,7 @@ import {
   buttonClass,
   severityMeta,
 } from "@/components/ui";
+import { RemediationProgress, SeverityChart } from "@/components/dashboard-widgets";
 import { DEMO_FINDINGS, DEMO_SCANS, totalCounts } from "@/lib/demo";
 import { SEVERITY_ORDER, SEVERITY_LABEL, type Severity } from "@/lib/types";
 import { formatDateTime, formatDuration } from "@/lib/format";
@@ -45,6 +46,13 @@ export default function DashboardPage() {
         {SEVERITY_ORDER.map((sev) => (
           <SeverityTile key={sev} severity={sev} count={counts[sev]} />
         ))}
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <RemediationProgress />
+        </div>
+        <SeverityChart />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
@@ -121,7 +129,7 @@ function SeverityTile({ severity, count }: { severity: Severity; count: number }
   const m = severityMeta[severity];
   const Icon = m.icon;
   return (
-    <Card className="p-4">
+    <Card interactive className="p-4">
       <div className="flex items-center justify-between">
         <Icon className={`size-4 ${m.text}`} aria-hidden />
         <span className={`size-1.5 rounded-full ${m.dot}`} aria-hidden />

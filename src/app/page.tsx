@@ -20,7 +20,7 @@ export default function LandingPage() {
 
       <main id="main" className="flex-1">
         {/* hero */}
-        <section className="mx-auto w-full max-w-6xl px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:px-8">
+        <section className="aura mx-auto w-full max-w-6xl px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:px-8">
           <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-fg-muted">
