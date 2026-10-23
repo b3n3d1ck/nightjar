@@ -2,6 +2,35 @@
 
 A working document. Findings are ordered by priority; each notes the fix status.
 
+## Round 3 (address policy & docs)
+
+- **Weak IP classification.** `ipIsPrivate` used string prefixes and missed many
+  reserved ranges (TEST-NET, benchmarking, multicast, reserved/future, several
+  IPv6 specials) and some representations. **Fixed:** replaced with a parsed
+  global-routability policy (`src/lib/scan/net.ts`) across the IANA
+  special-purpose registries for IPv4, IPv6, IPv4-mapped/compatible, and NAT64,
+  **failing closed** on unparseable input. Covered by 10 dedicated test cases
+  (`net.test.ts`) exercising dozens of addresses across every range.
+- **Oversized responses.** Confirmed the stream is capped at `MAX_BODY` and the
+  reader cancelled; added a regression test proving a 10 MB stream is cut near
+  the ~500 KB cap.
+- **Client IP / rate limiting.** Switched to `x-real-ip` (Vercel-set) with an
+  `x-forwarded-for` fallback, and documented the per-instance + trusted-proxy
+  limitations in `SECURITY.md`.
+- **Docs reconciliation.** `README.md` now has a precise real/demo/not-implemented
+  status table; live results and demo data are never mixed.
+
+### Not done this round (needs infrastructure/approval — exact blockers)
+
+- **Durable assessment management + auth** (projects, targets, scopes, findings,
+  audit events): requires a provisioned database (`DATABASE_URL`) and an auth
+  provider. The persistence layer can be built and tested now with `pg-mem`;
+  activation needs the real database. No fake in-memory "durable" store was
+  added.
+- **Ghostmap / Shellhound import + CLI execution:** needs a separate worker
+  (serverless routes cannot host long-running processes). The import-adapter
+  contract can be built against sample output; running the CLIs needs the worker.
+
 ## Round 2 (scanner v1.2.0)
 
 - **Confirmed bug — `Set-Cookie` collapse.** `Headers.get("set-cookie")` joins

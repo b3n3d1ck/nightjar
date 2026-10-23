@@ -123,6 +123,30 @@ describe("scan() integration — exposure + masking", () => {
   });
 });
 
+describe("scan() integration — response-size enforcement", () => {
+  it("caps and cancels an oversized response while streaming", async () => {
+    let pulled = 0;
+    const bigStream = () =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += 100_000;
+          controller.enqueue(new TextEncoder().encode("A".repeat(100_000)));
+          if (pulled >= 10_000_000) controller.close();
+        },
+      });
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      if (input.toString() === "https://site.test/")
+        return new Response(bigStream(), { status: 200, headers: { "content-type": "text/html" } });
+      return new Response(null, { status: 404 });
+    }) as unknown as ScanDeps["fetchImpl"];
+
+    const r = await scan("https://site.test", { deps: deps(fetchImpl, makeResolve({})) });
+    expect(r.live).toBe(true);
+    // the engine stopped near the ~500KB cap, not the 10MB offered
+    expect(pulled).toBeLessThan(2_000_000);
+  });
+});
+
 describe("scan() integration — input validation", () => {
   it("rejects a malformed URL", async () => {
     const fetchImpl = makeFetch({});

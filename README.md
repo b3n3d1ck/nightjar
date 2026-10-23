@@ -92,6 +92,21 @@ npm test        # unit + component tests (Vitest)
   every push/PR, **gates** on production-dependency vulnerabilities, and
   surfaces dev-tool advisories as warnings.
 
+## Feature status (what executes real code)
+
+| Area | Status |
+|---|---|
+| **Live passive scan** (`/scan`, `POST /api/scan`) | **Real.** Runs server-side against the submitted URL. |
+| SSRF guard, redirect re-validation, scope/window enforcement | **Real**, server-enforced, unit + integration tested. |
+| URL / phishing analysis (`/analyze`) | **Real**, offline, no network. |
+| Finding status + remediation progress, settings | **Real but per-browser** (`localStorage`) — not shared or durable. |
+| Dashboard metrics, scan **History** (`/scans`) | **Demo data**, clearly labelled; not real assessment records. |
+| Multi-user assessments, projects, durable storage, auth | **Not implemented** — needs a database (see below). |
+| Ghostmap / Shellhound import | **Not implemented** — needs a worker/import adapter (see below). |
+
+Real scan results and demo data are never mixed: live results appear only on
+`/scan`, and every demo surface carries a `Demo` label.
+
 ## Architecture & limitations
 
 NIGHTJAR deploys to Vercel as a single Next.js app; the scanner runs in a

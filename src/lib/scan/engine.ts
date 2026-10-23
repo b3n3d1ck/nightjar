@@ -1,5 +1,6 @@
 import { lookup, reverse as dnsReverse } from "node:dns/promises";
 import { createHash } from "node:crypto";
+import { isDisallowedIp } from "./net";
 import type { Severity } from "@/lib/types";
 import type { Confidence, ScanFinding, ScanPath, ScanResult } from "./types";
 
@@ -83,21 +84,13 @@ export function sameScope(baseHostname: string, hostname: string): boolean {
 
 // ---- SSRF guard -----------------------------------------------------------
 
+/**
+ * True when an address must not be connected to. Delegates to the parsed
+ * global-routability policy in net.ts (IPv4/IPv6/mapped/NAT64/reserved,
+ * fail-closed). Kept as a named export for existing call sites and tests.
+ */
 export function ipIsPrivate(ip: string): boolean {
-  const v = ip.toLowerCase();
-  if (v === "::1" || v === "::") return true;
-  if (v.startsWith("fe80") || v.startsWith("fc") || v.startsWith("fd")) return true;
-  // IPv4-mapped IPv6
-  const mapped = v.startsWith("::ffff:") ? v.slice(7) : v;
-  const m = mapped.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  if (a === 10 || a === 127 || a === 0) return true;
-  if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-  return false;
+  return isDisallowedIp(ip);
 }
 
 // Normalize obfuscated IPv4 literals (decimal 2130706433, hex 0x7f000001,

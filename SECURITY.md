@@ -16,14 +16,24 @@ UI:
 - **Authorization gate** — the API refuses to run without an explicit
   `authorized: true` confirmation.
 - **SSRF guard** — the target host is resolved and every resulting address is
-  checked. Loopback, private (RFC 1918), link-local / cloud-metadata
-  (169.254.0.0/16), CGNAT, and IPv6 ULA/link-local ranges are rejected, for both
-  IPv4 and IPv4-mapped IPv6.
+  checked against a parsed global-routability policy (`src/lib/scan/net.ts`)
+  covering the IANA special-purpose registries: loopback, RFC 1918 private,
+  CGNAT, link-local / cloud-metadata (169.254/16), benchmarking, documentation,
+  multicast and reserved ranges, for IPv4, IPv6, IPv4-mapped/compatible IPv6 and
+  NAT64-embedded IPv4. The policy **fails closed**: an address that does not
+  parse is rejected. Obfuscated numeric host literals (`0x7f000001`,
+  `2130706433`, `0177.0.0.1`) are decoded and rejected before any request.
 - **Redirect re-validation** — redirects are never followed automatically. Each
   hop is re-resolved and re-checked against the SSRF guard, and a redirect that
   leaves the authorized scope (a different registrable host) is reported and not
   followed. This closes redirect-based SSRF and scope-escape.
-- **Rate limiting** — a best-effort per-IP limit on the scan endpoint.
+- **Rate limiting** — a best-effort per-IP limit on the scan endpoint. The
+  client IP is taken from `x-real-ip` (which Vercel sets to the connecting
+  client and overwrites), falling back to `x-forwarded-for`. **Limitations:**
+  the in-memory counter is per serverless instance (not global), and off-Vercel
+  the forwarded headers are spoofable without a verified trusted-proxy chain. A
+  durable, global limit needs a shared store (e.g. Upstash/Redis) — the
+  environment variables are reserved in `.env.example`.
 - **Secret redaction** — evidence snippets mask password/token/base64-like
   values before they are shown or exported.
 

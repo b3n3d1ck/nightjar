@@ -33,9 +33,16 @@ const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 6;
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
+// Client identity for rate limiting. On Vercel the platform sets `x-real-ip`
+// to the connecting client and overwrites any client-supplied value, so it is
+// the trustworthy source here; `x-forwarded-for` is a spoofable fallback for
+// other hosts. Without a verified trusted-proxy chain AND a shared store this
+// limiter is best-effort only — documented in SECURITY.md.
 function clientIp(req: Request): string {
+  const real = req.headers.get("x-real-ip");
+  if (real) return real.trim();
   const xff = req.headers.get("x-forwarded-for");
-  return (xff ? xff.split(",")[0] : null)?.trim() || "unknown";
+  return (xff ? xff.split(",")[0].trim() : "") || "unknown";
 }
 
 function rateLimited(ip: string): boolean {
