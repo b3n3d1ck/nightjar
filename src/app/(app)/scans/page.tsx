@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Radar, CheckCircle2, XCircle, PlugZap } from "lucide-react";
 import { Card, PageHeader, SeverityBadge, DemoTag } from "@/components/ui";
 import { DEMO_SCANS } from "@/lib/demo";
@@ -21,9 +22,9 @@ export default function ScansPage() {
           <p className="font-medium text-fg">This is run history (demo)</p>
           <p className="mt-1 text-fg-muted">
             These are demonstration runs. Live scanning happens on the{" "}
-            <a href="/scan" className="text-accent hover:underline">
+            <Link href="/scan" className="text-accent hover:underline">
               Scan a URL
-            </a>{" "}
+            </Link>{" "}
             page — results there are real, not stored here yet. Deeper engines
             (ghostmap, shellhound) run from the command line.
           </p>
