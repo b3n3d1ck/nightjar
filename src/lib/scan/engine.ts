@@ -1,4 +1,4 @@
-import { lookup, reverse } from "node:dns/promises";
+import { lookup, reverse as dnsReverse } from "node:dns/promises";
 import { createHash } from "node:crypto";
 import type { Severity } from "@/lib/types";
 import type { Confidence, ScanFinding, ScanPath, ScanResult } from "./types";
@@ -26,12 +26,27 @@ export class ScanRejected extends Error {}
  */
 export interface ScanDeps {
   resolve: (host: string) => Promise<string[]>;
+  reverse: (ip: string) => Promise<string[]>;
   fetchImpl: typeof fetch;
   now: () => number;
 }
 
+// Reverse DNS is best-effort and must never block a scan: cap it with a timeout
+// and swallow failures. (Without the cap, a slow PTR lookup can hang the run.)
+async function boundedReverse(ip: string): Promise<string[]> {
+  try {
+    return await Promise.race([
+      dnsReverse(ip),
+      new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 2500)),
+    ]);
+  } catch {
+    return [];
+  }
+}
+
 const defaultDeps: ScanDeps = {
   resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
+  reverse: boundedReverse,
   fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
   now: () => Date.now(),
 };
@@ -372,12 +387,7 @@ export async function scan(
   base.hash = "";
 
   const ips = await assertPublicHost(base.host, deps.resolve);
-  let reverseDns: string[] = [];
-  try {
-    reverseDns = await reverse(ips[0]);
-  } catch {
-    /* no PTR */
-  }
+  const reverseDns = await deps.reverse(ips[0]);
 
   // scope: which hosts a redirect may reach, and which categories run
   const allowed = new Set(

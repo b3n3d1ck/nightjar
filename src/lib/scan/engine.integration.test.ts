@@ -19,6 +19,7 @@ function makeResolve(map: Record<string, string[]>, fallback: string[] = ["93.18
 const deps = (fetchImpl: ScanDeps["fetchImpl"], resolve: ScanDeps["resolve"]): Partial<ScanDeps> => ({
   fetchImpl,
   resolve,
+  reverse: async () => [],
   now: () => Date.parse("2026-06-15T12:00:00Z"),
 });
 
