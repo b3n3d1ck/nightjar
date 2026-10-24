@@ -72,26 +72,29 @@ export function SectionHeader({
   title,
   description,
   action,
+  eyebrow,
   as: Heading = "h2",
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  eyebrow?: string;
   as?: "h1" | "h2" | "h3";
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="space-y-1">
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0 space-y-1.5">
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <Heading
           className={cn(
-            "font-semibold tracking-tight text-fg",
-            Heading === "h1" ? "text-xl sm:text-2xl" : "text-base sm:text-lg",
+            "font-display font-semibold tracking-tight text-fg",
+            Heading === "h1" ? "text-2xl sm:text-[1.75rem]" : "text-base sm:text-lg",
           )}
         >
           {title}
         </Heading>
         {description ? (
-          <p className="max-w-prose text-sm text-fg-muted">{description}</p>
+          <p className="max-w-prose text-sm leading-relaxed text-fg-muted">{description}</p>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -207,14 +210,22 @@ export function PageHeader({
   title,
   description,
   action,
+  eyebrow,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  eyebrow?: string;
 }) {
   return (
-    <div className="mb-6">
-      <SectionHeader as="h1" title={title} description={description} action={action} />
+    <div className="mb-6 border-b border-border pb-5">
+      <SectionHeader
+        as="h1"
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        action={action}
+      />
     </div>
   );
 }

@@ -30,6 +30,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Workspace"
         title="Overview"
         description="Current posture across the sample targets, with the findings that need attention first."
         action={

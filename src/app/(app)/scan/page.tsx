@@ -8,6 +8,7 @@ export default function ScanPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Live · passive audit"
         title="Scan a URL"
         description="A live, passive audit. Enter a site you are authorized to test and NIGHTJAR reads what the server reveals — headers, cookies, exposed files, technology, and surface — using GET requests only."
       />

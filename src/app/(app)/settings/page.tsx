@@ -8,6 +8,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Workspace"
         title="Settings"
         description="Workspace preferences and assessment scope. In this build these are stored in your browser only — there is no account or server behind them."
       />

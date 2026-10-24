@@ -125,6 +125,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Brand compact />
           </div>
 
+          <CurrentSection />
+
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
@@ -183,6 +185,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <CommandPalette />
+    </div>
+  );
+}
+
+function CurrentSection() {
+  const pathname = usePathname();
+  const item = NAV_ITEMS.find((i) => isActive(pathname, i.href));
+  if (!item) return null;
+  return (
+    <div className="flex min-w-0 items-center">
+      <span className="truncate text-sm font-medium text-fg">{item.label}</span>
     </div>
   );
 }

@@ -92,6 +92,7 @@ export function FindingsClient({ findings }: { findings: Finding[] }) {
   return (
     <>
       <PageHeader
+        eyebrow="Review & triage"
         title="Findings"
         description="Review observations, understand the risk, and track remediation."
       />

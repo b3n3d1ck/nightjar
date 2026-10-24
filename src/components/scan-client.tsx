@@ -199,9 +199,30 @@ export function ScanClient() {
         </form>
       </Card>
 
+      {state.phase === "idle" && <IdleGuide />}
       {state.phase === "scanning" && <Scanning />}
       {state.phase === "error" && <ErrorNote message={state.message} />}
       {state.phase === "done" && <Results result={state.result} />}
+    </div>
+  );
+}
+
+function IdleGuide() {
+  return (
+    <div className="rounded-lg border border-dashed border-border p-4 sm:p-5">
+      <p className="eyebrow">What a passive run checks</p>
+      <ul className="mt-3 grid gap-x-6 gap-y-2 text-sm text-fg-muted sm:grid-cols-2">
+        {CATEGORIES.map((c) => (
+          <li key={c.id} className="flex items-center gap-2">
+            <span className="size-1 rounded-full bg-accent" aria-hidden />
+            {c.label}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-xs text-fg-subtle">
+        GET requests only — no brute force, no exploitation. Internal and private
+        addresses are rejected before any request leaves the server.
+      </p>
     </div>
   );
 }

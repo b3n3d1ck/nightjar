@@ -62,6 +62,7 @@ export default function LearnPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Reference"
         title="Learn"
         description="The weaknesses NIGHTJAR surfaces, what they mean, and how to close them. Plain explanations, no jargon for its own sake."
       />

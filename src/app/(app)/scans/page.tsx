@@ -12,6 +12,7 @@ export default function ScansPage() {
   return (
     <>
       <PageHeader
+        eyebrow="History"
         title="Scans"
         description="Assessment runs and how their findings break down. Newest first."
       />
